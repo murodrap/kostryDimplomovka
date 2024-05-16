@@ -11,6 +11,7 @@
 #include <regex>
 
 #include "cycleCounting.h"
+//#include "spanningTreeCounting.h"
 
 
 
@@ -51,11 +52,11 @@ void CycleCounter::findCycleFromVertex(int remainingLength, int currentVertex, i
     if (remainingLength == 1) {
         //std::cout << "end " << currentVertex << std::endl << "path: ";
         for (auto vertex : path) {
-            std::cout << vertex << " ";
+            //std::cout << vertex << " ";
         }
-        std::cout << std::endl;
+        //std::cout << std::endl;
         if (matrix[currentVertex].find(originalVertex) != matrix[currentVertex].end()) {
-            std::cout << "cycle\n";
+            //std::cout << "cycle\n";
             foundCycles++;
         }
         return;
@@ -91,11 +92,11 @@ int CycleCounter::countForGraph(const Edges& edges, int length) {
     edgesToMatrix(edges);
 
     for (int v = 0; v < n; v++) {
-        std::cout << v << ": ";
+        //std::cout << v << ": ";
         for (auto u : matrix[v]) {
-            std::cout << u << " ";
+            //std::cout << u << " ";
         }
-        std::cout << std::endl;
+        //std::cout << std::endl;
     }
     return countCycles(length);
 }
@@ -108,7 +109,20 @@ int CycleCounter::countForGraph(std::string& graph, int length) {
 }
 
 int main(int argc, char *argv[]) {
-    CycleCounter counter = CycleCounter(4, 3);
-    int cycles = counter.countForGraph({{0, 1}, {0, 2}, {0, 3}, {1, 2}, {1, 3}, {2, 3}}, 4);
-    std::cout << cycles << std::endl;
+    while (true) {
+        int n, length;
+        std::cin >> n;
+        std::cin >> length;
+        std::cin.ignore (std::numeric_limits<std::streamsize>::max(), '\n'); 
+        std::string graph;
+        std::getline(std::cin, graph);
+
+        CycleCounter counter = CycleCounter(n, 3);
+        //SpanningTreeCounter counter2 = SpanningTreeCounter(n, 3);
+        //int cycles = counter.countForGraph({{0, 1}, {0, 2}, {0, 3}, {1, 2}, {1, 3}, {2, 3}}, 4);
+        int cycles = counter.countForGraph(graph, length);
+        //int trees = counter2.countForGraph(const Edges &edges)
+        std::cout << cycles << std::endl;
+    }
+    
 }
