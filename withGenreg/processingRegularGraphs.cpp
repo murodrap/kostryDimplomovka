@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <ostream>
 #include <stdio.h>
 #include <vector>
 #include <map>
@@ -16,10 +18,13 @@
 #include "grafyPreVsetkych.h"
 
 using Edges = std::vector<std::vector<int>>;
+using AdjMatrix = std::vector<std::vector<int>>;
 
 #include "grafyPreVsetkych.h"
+#include "cycleCounter.h"
+#include "cycleReducer.h"
 
-std::mutex m, m2;
+std::mutex m, m2, irreducibleFile; 
 int velkostBuffera;
 
 std::vector<std::condition_variable> empty;
@@ -41,7 +46,7 @@ void nastavVelkosti(int spracov) {
     fill = std::vector<std::condition_variable>(velkostBuffera);
     lockyPolickaBuffera = std::vector<std::mutex>(velkostBuffera);
     plnostPoliciekBuffera = std::vector<int>(velkostBuffera);
-    grafyNaSpracovanie = std::vector<Edges>(velkostBuffera);
+    grafyNaSpracovanie = std::vector<AdjMatrix>(velkostBuffera);
 }
 
 
@@ -55,13 +60,13 @@ void pripravaGrafov(int n, int k) {
     kG = k;
     int hran = nG * kG / 2;
     for (int i = 0; i < velkostBuffera; i++) {
-        for (int h = 0; h < hran; h++) {
-            grafyNaSpracovanie[i].push_back({0, 0});
+        for (int r = 0; r < n; r++) {
+            grafyNaSpracovanie[i].push_back(std::vector<int>(n));
         }
     }
 }
 
-const Edges& grafNaIndexe(int index) {
+AdjMatrix& grafNaIndexe(int index) {
     return grafyNaSpracovanie[index];
 }
 
@@ -77,29 +82,26 @@ void zapisGrafu(const SCHAR* stupne, SCHAR** susedia) {
             return plnostPoliciekBuffera[indexBuffera] == 0;
         });
     
-    //std::cout << "pisem na ind " << fillInd << std::endl;
-    int indexHrany = 0;
+    for (int i = 0; i < nG; i++) {
+        for (int j = 0; j < nG; j++) {
+            grafyNaSpracovanie[indexBuffera][i][j] = 0;
+        }
+        
+    }
     for(int i= 1; i <= nG; i++) {
         for(int j = 1; j <= stupne[i]; j++) {
-            if (susedia[i][j] >= i) {
-                break;
-            }
-            grafyNaSpracovanie[indexBuffera][indexHrany][0] = susedia[i][j] - 1;
-            grafyNaSpracovanie[indexBuffera][indexHrany][1] = i - 1;
-            indexHrany++;
+            grafyNaSpracovanie[indexBuffera][i - 1][susedia[i][j] - 1] = 1;
         }
     }
     
     plnostPoliciekBuffera[indexBuffera]++;
     
-    //std::cout << "po zapise " << fillInd << std::endl;
     
     lck.unlock();  
     fill[indexBuffera].notify_one(); 
 }
 
 void koniecGeneratora() {
-    //std::cout << "koncim gen\n";
     m2.lock();
     pocetGeneratorov--;
     if (!pocetGeneratorov) {
@@ -112,6 +114,23 @@ void koniecGeneratora() {
     m2.unlock();
 }
 
+
+ Edges matrixToEdgeList(const AdjMatrix& matrix, int n, int reg) {
+    int numberOfEdges = n * reg / 2;
+    Edges edgeList = Edges();
+    edgeList.reserve(numberOfEdges);
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (matrix[i][j]) {
+                edgeList.push_back({i, j});
+            }
+        }
+    }
+
+    return edgeList;
+ }
+
+
 /**
  * checks whether the given graph doesn't have equal or lower/higher nuber of spanning trees that the currently stored min/max values
  * updates the according values if necessary
@@ -120,7 +139,6 @@ void koniecGeneratora() {
  * @param edges lines with adjacency lists for s graph in string format
  */
 void ProcRegular::updateValues(long long number, const Edges& edges) {
-    //std::cout << "upd\n";
 
     if (number == maxK) {
         if (maxG.size() < maxStroredGraphs) {
@@ -147,22 +165,20 @@ void ProcRegular::updateValues(long long number, const Edges& edges) {
 
 }
 
-long ProcRegular::podlaVzorca() {
-    std::map<int, int> hodn{{4, 16}, {6, 75}, {8, 256}, {12, 2112}};
-
-
-    auto h = hodn.find(this->n);
-    if (h != hodn.end()) {
-        return h->second;
+ void ProcRegular::updateCycles(long count, const Edges& edges, long long spanningTrees) {
+    if (count == minCycles) {
+        if (minCyclesGraphs.size() < maxStroredGraphs) {
+            minCyclesGraphs.push_back({edges, spanningTrees});
+        }
     }
-   
-    if (n%4 == 0) {
-        long stvorkove = trunc(pow(8, trunc((n-3*5)/4)));
-        return trunc(pow(24, 3)) * stvorkove;
+
+    if (count < minCycles) {
+        minCycles = count;
+        minCyclesGraphs.clear();
+        minCyclesGraphs.push_back({edges, spanningTrees});
     }
-    long stvorkove = trunc(pow(8, trunc((n-2*5)/4)));
-    return trunc(pow(24, 2)) * stvorkove;
-}
+ }
+
 
 
 
@@ -174,10 +190,26 @@ long ProcRegular::podlaVzorca() {
  * @param sub file stream to write to
  */
 void ProcRegular::graphsToFile(long long number, const std::vector<Edges>& graphs, std::ofstream& sub) {
-    sub <<  graphs.size() << " " << number << "\n";
+    sub <<  graphs.size() << " graphs, " << number << "\n";
     
     for (const Edges& graph : graphs) {
-        sub << "[";
+        printGraph(graph, sub);
+    }
+}
+
+void ProcRegular::cycleGraphsToFile(long number, const std::vector<std::pair<Edges, long long>>& graphs, std::ofstream& sub) {
+    sub << "graphs with minimum number of cycles of girth=" << minGirth << std::endl;
+    sub <<  graphs.size() << " graphs, " << number << "\n";
+    
+    for (auto graphInfo : graphs) {
+        sub << graphInfo.second << " spanning trees" << std::endl;
+        printGraph(graphInfo.first, sub);
+        sub <<std::endl;
+    }
+}
+
+void ProcRegular::printGraph(const Edges& graph, std::ofstream& sub) {
+    sub << "[";
         bool firstEdge = true;
         for (const std::vector<int>& edge : graph) {
             if (firstEdge) {
@@ -190,21 +222,39 @@ void ProcRegular::graphsToFile(long long number, const std::vector<Edges>& graph
         }
 
         sub << "]\n";
-    }
-
-
 }
 
 /**
  * writes results to output file, first for graphs with minimum and maximum number of spanning trees
  */
 void ProcRegular::writeToFile(){
+    if (printReductions) {
+        irreducibleToFile();
+        fileReductionsTo.close();
+        return;
+    }
     fileTo << "min ";
     graphsToFile(minK, minG, fileTo);
     fileTo << "max ";
     graphsToFile(maxK, maxG, fileTo);
     fileTo.close();
+    if (cycles) {
+        cycleGraphsToFile(minCycles, minCyclesGraphs, fileCyclesTo);
+        fileCyclesTo.close();
+    }
+    
 
+}
+
+void ProcRegular::updateIrreducibleGraphs(const Edges& edges, long long spanningTrees) {
+    irreducibleGraphs.push_back({edges, spanningTrees});
+}
+void ProcRegular::irreducibleToFile(){
+    for (auto graph : irreducibleGraphs) {
+        fileReductionsTo  << graph.second << " ";
+        printGraph(graph.first, fileReductionsTo);
+    }
+    
 }
 
 
@@ -214,12 +264,31 @@ void ProcRegular::writeToFile(){
  * @param graph lines with adjacency lists for s graph in string format
  */
 void ProcRegular::processGraph(int indexGrafu) {
-    const Edges& edges = grafNaIndexe(indexGrafu);
+    AdjMatrix& matrix = grafNaIndexe(indexGrafu);
 
-    long long numberOfSpanningTrees = counter.countForGraph(edges);
+
+    long long numberOfSpanningTrees = counter.countForGraph(matrix);
+    
+    Edges edgeList = matrixToEdgeList(matrix, n , reg);
     //std::cout << numberOfSpanningTrees << std::endl;
-    //long long numberOfSpanningTrees = 0;
-    updateValues(numberOfSpanningTrees, edges);
+
+    if (printReductions) {
+        //printGraph(edgeList, std::cout);
+        if (!reducer.processGraph(&matrix, numberOfSpanningTrees)) {
+            updateIrreducibleGraphs(edgeList, numberOfSpanningTrees);
+            //irreducibleFile.lock();
+            //std::cout << numberOfSpanningTrees << std::endl;
+            //fileReductionsTo <<"-" << numberOfSpanningTrees << "- ";
+            //printGraph(edgeList, fileReductionsTo);
+            //irreducibleFile.unlock();
+        }
+        return;
+    }
+    updateValues(numberOfSpanningTrees, edgeList);
+    if (cycles) {
+        long cycleCount = cycleCounter.countForGraph(matrix);
+        updateCycles(cycleCount, edgeList, numberOfSpanningTrees);
+    }
 }
 
 /**
@@ -231,27 +300,30 @@ void ProcRegular::processAll() {
         int indexBuffera = useInd;
         useInd = (useInd + 1) % velkostBuffera;
         m.unlock();
-        //std::cout<< pocetGeneratorov << " " << count << std::endl;
         std::unique_lock<std::mutex> lck(lockyPolickaBuffera[indexBuffera]);
         fill[indexBuffera].wait( lck, [ & ] ( )
         {
             return plnostPoliciekBuffera[indexBuffera] == 1 || !pocetGeneratorov;
         });
-        //std::cout << "--------" << pocetGeneratorov << " " << count << std::endl;
+
         if (!plnostPoliciekBuffera[indexBuffera] && !pocetGeneratorov) {
             lck.unlock();
             break;
         }
-        //std::cout << "citanie\n";
+
         processGraph(indexBuffera);
+
 
        
         plnostPoliciekBuffera[indexBuffera]--;
-        //std::cout << "po spracovani " << useInd << std::endl;
+
      
         
         lck.unlock();
         empty[indexBuffera].notify_one(); 
     }
-    //std::cout << "idem pisat do suboru\n";
+    if (printReductions) {
+        fileReductionsTo.close();
+    }
+
 }

@@ -9,9 +9,11 @@
 #include <iomanip>
 
 #include "spanningTreeCounting.h"
+#include <armadillo>
+
 
 using Matrix = std::vector<std::vector<long double>>;
-using Edges = std::vector<std::vector<int>>;
+using AdjMatrix = std::vector<std::vector<int>>;
 
 /**
  * finds pair with highes values overall
@@ -54,7 +56,9 @@ long long SpanningTreeCounter::gauss(int n) {
             long double iMax;
 
             for (int i = r1; i < n; i++) {
-                pairs[i-r1][0] = (long double)std::abs(matrix[i][s1]);
+                //std::cout << std::abs(matrix[i][s1]) << "-----" << (long double)std::abs(matrix[i][s1]) << std::endl;
+
+                pairs[i-r1][0] = std::abs(matrix[i][s1]);
                 pairs[i-r1][1] = (long double)i;
             }
             iMax = maxValue(n - r1);
@@ -80,12 +84,13 @@ long long SpanningTreeCounter::gauss(int n) {
             
         long double result = 1.;
         for (int i = 0; i < n; i++) {
-            result *= matrix[i][i];
+            result = result * matrix[i][i];
+            //std::cout << std::setprecision (15) << result  << "       " << matrix[i][i]<< std::endl;
         }
-    //std::cout << std::setprecision (15) << result << std::endl;
-    //std::cout << result << "----" << llabs(result) << std::endl;
+    
+    //std::cout<< std::setprecision (25)  << result << std::setprecision (15) << "----" << llabs(result) << std::endl;
    
-    return llround(result);
+    return llabs(llround(result));
 
 
 }
@@ -107,32 +112,27 @@ long long SpanningTreeCounter::kofaktor(int n, int r, int s) {
  * @param edges edge list of a graph whose spanning trees are counted
  * @return number of spanning trees of the given graph
  */
-long long SpanningTreeCounter::countForGraph(const Edges& edges) {
+long long SpanningTreeCounter::countForGraph(const AdjMatrix& adjMatrix) {
+     //arma::dmat matrixArma(n-1, n-1, arma::fill::zeros);
+
     for (int i= 0; i < n-1; i++) {
         std::fill(matrix[i].begin(), matrix[i].end(), 0.0);
     }
-   
 
-    for (const std::vector<int>& edge : edges) {
-        int u = edge[0]-1;
-        int v = edge[1]-1;
-        if (v >= 0 && u >= 0) {
-            matrix[u][v] = -1.;
-            matrix[v][u] = -1.;
-        }
-        if (!reg) { 
-            if (u >= 0) matrix[u][u]++;
-            if (v >= 0) matrix[v][v]++;
-        }
-
-    }
-
-    if (reg) {
-        for (int r = 0; r < n-1; r++) {
-            matrix[r][r] = (long long)reg;
+    for (int i = 1; i < n; i++) {
+        for (int j = 1; j < n; j++) {
+            matrix[i-1][j-1] = adjMatrix[i][j] * -1.;
+            //matrixArma(i-1, j-1) = adjMatrix[i][j] * -1;
+            if (reg && i == j) {
+               matrix[i-1][j-1] = (long double)reg;
+               //matrixArma(i-1, j-1) = reg;
+            }
         }
     }
+    //long long determinant = arma::det(matrixArma);
+    //std::cout << "===========" << determinant << "=================\n";
 
 
+    //return determinant;
     return SpanningTreeCounter::kofaktor(n, 0, 0);
 }

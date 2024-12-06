@@ -4,7 +4,7 @@
 #include <climits>
 #include <string>
 using Matrix = std::vector<std::vector<long double>>;
-
+using AdjMatrix = std::vector<std::vector<int>>;
 
 class SpanningTreeCounter
 {
@@ -23,7 +23,7 @@ class SpanningTreeCounter
 public:
     
     using Edges = std::vector<std::vector<int>>;
-    long long countForGraph(const Edges& edges);
+    long long countForGraph(const AdjMatrix& adjMatrix);
     SpanningTreeCounter(int n2, int reg2)
     : n(n2)
     , reg(reg2)
