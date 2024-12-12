@@ -9,7 +9,7 @@
 #include <iomanip>
 
 #include "spanningTreeCounting.h"
-#include <armadillo>
+
 
 
 using Matrix = std::vector<std::vector<long double>>;
